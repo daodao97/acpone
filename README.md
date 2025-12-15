@@ -1,6 +1,6 @@
 # ACPone
 
-[ACP](https://agentclientprotocol.com/protocol/overview) (Agentic Commerce Protocol) Gateway - 一个连接多个 AI Agent 的 Web 聊天界面。
+基于 [ACP](https://agentclientprotocol.com/protocol/overview) 协议 - 同时调度多个 AI Agent 的 ChatBot。
 
 ## 功能特性
 
