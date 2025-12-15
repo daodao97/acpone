@@ -1,0 +1,185 @@
+package agent
+
+import (
+	"fmt"
+	"io"
+	"os"
+	"os/exec"
+	"sync"
+
+	"github.com/anthropics/acpone/internal/config"
+	"github.com/anthropics/acpone/internal/jsonrpc"
+)
+
+// Status represents agent process status
+type Status string
+
+const (
+	StatusIdle     Status = "idle"
+	StatusStarting Status = "starting"
+	StatusRunning  Status = "running"
+	StatusError    Status = "error"
+	StatusStopped  Status = "stopped"
+)
+
+// PermissionRequest from agent
+type PermissionRequest struct {
+	SessionID string `json:"sessionId"`
+	Options   []struct {
+		OptionID string `json:"optionId"`
+		Name     string `json:"name"`
+		Kind     string `json:"kind"`
+	} `json:"options"`
+	ToolCall struct {
+		ToolCallID string         `json:"toolCallId"`
+		RawInput   map[string]any `json:"rawInput,omitempty"`
+		Status     string         `json:"status,omitempty"`
+		Title      string         `json:"title,omitempty"`
+		Kind       string         `json:"kind,omitempty"`
+	} `json:"toolCall"`
+}
+
+// PendingRequest tracks an in-flight request
+type PendingRequest struct {
+	Result chan *jsonrpc.Message
+	Method string
+}
+
+// PendingPermission tracks permission request
+type PendingPermission struct {
+	RequestID int
+	Response  chan string // optionId
+}
+
+// Process wraps a backend ACP process
+type Process struct {
+	ID         string
+	Name       string
+	config     *config.AgentConfig
+	cmd        *exec.Cmd
+	stdin      io.WriteCloser
+	stdout     io.ReadCloser
+	status     Status
+	requestID  int
+	workingDir string
+
+	pending     map[int]*PendingRequest
+	permissions map[string]*PendingPermission
+	mu          sync.Mutex
+
+	// Event handlers
+	onNotification func(msg *jsonrpc.Message)
+	onPermission   func(req *PermissionRequest)
+}
+
+// NewProcess creates a new agent process
+func NewProcess(cfg *config.AgentConfig) *Process {
+	cwd, _ := os.Getwd()
+	return &Process{
+		ID:          cfg.ID,
+		Name:        cfg.Name,
+		config:      cfg,
+		status:      StatusIdle,
+		workingDir:  cwd,
+		pending:     make(map[int]*PendingRequest),
+		permissions: make(map[string]*PendingPermission),
+	}
+}
+
+// Status returns current status
+func (p *Process) Status() Status {
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	return p.status
+}
+
+// SetWorkingDir sets the working directory
+func (p *Process) SetWorkingDir(dir string) {
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	p.workingDir = dir
+}
+
+// OnNotification sets notification handler
+func (p *Process) OnNotification(fn func(*jsonrpc.Message)) {
+	p.onNotification = fn
+}
+
+// OnPermission sets permission request handler
+func (p *Process) OnPermission(fn func(*PermissionRequest)) {
+	p.onPermission = fn
+}
+
+// Start starts the agent process
+func (p *Process) Start() error {
+	p.mu.Lock()
+	if p.status == StatusRunning {
+		p.mu.Unlock()
+		return nil
+	}
+	p.status = StatusStarting
+	p.mu.Unlock()
+
+	cmd := exec.Command(p.config.Command, p.config.Args...)
+	cmd.Env = os.Environ()
+	for k, v := range p.config.Env {
+		cmd.Env = append(cmd.Env, fmt.Sprintf("%s=%s", k, v))
+	}
+
+	stdin, err := cmd.StdinPipe()
+	if err != nil {
+		p.setStatus(StatusError)
+		return err
+	}
+
+	stdout, err := cmd.StdoutPipe()
+	if err != nil {
+		p.setStatus(StatusError)
+		return err
+	}
+
+	cmd.Stderr = os.Stderr
+
+	if err := cmd.Start(); err != nil {
+		p.setStatus(StatusError)
+		return err
+	}
+
+	p.mu.Lock()
+	p.cmd = cmd
+	p.stdin = stdin
+	p.stdout = stdout
+	p.status = StatusRunning
+	p.mu.Unlock()
+
+	go p.readLoop()
+	return nil
+}
+
+// Stop stops the agent process
+func (p *Process) Stop() error {
+	p.mu.Lock()
+	defer p.mu.Unlock()
+
+	if p.cmd == nil {
+		return nil
+	}
+
+	p.cmd.Process.Signal(os.Interrupt)
+	p.cmd = nil
+	p.status = StatusStopped
+
+	// Reject pending requests
+	for id, req := range p.pending {
+		close(req.Result)
+		delete(p.pending, id)
+	}
+
+	return nil
+}
+
+func (p *Process) setStatus(s Status) {
+	p.mu.Lock()
+	p.status = s
+	p.mu.Unlock()
+}

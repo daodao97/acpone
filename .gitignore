@@ -1,0 +1,6 @@
+third
+node_modules
+dist
+backend/cmd/acpone/web
+backend/acpone.config.json
+acpone
