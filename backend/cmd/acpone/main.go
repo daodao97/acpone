@@ -1,7 +1,6 @@
 package main
 
 import (
-	"embed"
 	"flag"
 	"fmt"
 	"io/fs"
@@ -12,10 +11,8 @@ import (
 
 	"github.com/anthropics/acpone/internal/api"
 	"github.com/anthropics/acpone/internal/config"
+	"github.com/anthropics/acpone/web"
 )
-
-//go:embed web/*
-var webFS embed.FS
 
 func main() {
 	var (
@@ -51,9 +48,9 @@ func main() {
 		staticFS = os.DirFS(*webDir)
 		fmt.Printf("   Web directory: %s\n\n", *webDir)
 	} else {
-		sub, err := fs.Sub(webFS, "web")
+		var err error
+		staticFS, err = web.FS()
 		if err == nil {
-			staticFS = sub
 			fmt.Println("   Web: embedded files\n")
 		} else {
 			fmt.Println("   Web: no files available\n")

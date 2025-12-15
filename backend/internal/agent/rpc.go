@@ -88,7 +88,16 @@ func (p *Process) write(v any) error {
 }
 
 func (p *Process) readLoop() {
-	scanner := bufio.NewScanner(p.stdout)
+	// Capture current stdout to detect if this loop belongs to current process
+	p.mu.Lock()
+	currentStdout := p.stdout
+	p.mu.Unlock()
+
+	if currentStdout == nil {
+		return
+	}
+
+	scanner := bufio.NewScanner(currentStdout)
 	// Increase buffer for large responses
 	buf := make([]byte, 0, 64*1024)
 	scanner.Buffer(buf, 10*1024*1024)
@@ -110,7 +119,12 @@ func (p *Process) readLoop() {
 		p.handleMessage(&msg)
 	}
 
-	p.setStatus(StatusStopped)
+	// Only set status if this is still the active process
+	p.mu.Lock()
+	if p.stdout == currentStdout || p.stdout == nil {
+		p.status = StatusStopped
+	}
+	p.mu.Unlock()
 }
 
 func (p *Process) handleMessage(msg *jsonrpc.Message) {

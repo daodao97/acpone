@@ -119,6 +119,19 @@ func (m *Manager) Request(agentID, method string, params any) (any, error) {
 	return result, nil
 }
 
+// Stop stops a specific agent by ID
+func (m *Manager) Stop(id string) error {
+	m.mu.RLock()
+	agent, ok := m.agents[id]
+	m.mu.RUnlock()
+
+	if !ok {
+		return fmt.Errorf("agent not found: %s", id)
+	}
+
+	return agent.Stop()
+}
+
 // Shutdown stops all agents
 func (m *Manager) Shutdown() error {
 	m.mu.Lock()

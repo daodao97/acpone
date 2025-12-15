@@ -74,6 +74,19 @@ func (s *Server) handleAgentUpdate(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// Stop the agent process so it will be recreated with new config on next request
+	_ = s.agents.Stop(data.AgentID)
+
+	// Clear agent initialization state so it will re-initialize
+	delete(s.initialized, data.AgentID)
+
+	// Clear all session mappings for this agent
+	for convID, sessions := range s.agentSessions {
+		if _, ok := sessions[data.AgentID]; ok {
+			delete(s.agentSessions[convID], data.AgentID)
+		}
+	}
+
 	writeJSON(w, map[string]any{"success": true, "agent": agent})
 }
 

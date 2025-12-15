@@ -38,7 +38,14 @@ type Error struct {
 }
 
 func (e *Error) Error() string {
-	return fmt.Sprintf("jsonrpc error %d: %s", e.Code, e.Message)
+	if e.Data != nil {
+		if dataMap, ok := e.Data.(map[string]any); ok {
+			if details, ok := dataMap["details"].(string); ok {
+				return fmt.Sprintf("%s: %s", e.Message, details)
+			}
+		}
+	}
+	return e.Message
 }
 
 // Standard error codes

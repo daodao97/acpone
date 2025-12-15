@@ -6,6 +6,7 @@ import (
 	"os"
 	"os/exec"
 	"sync"
+	"time"
 
 	"github.com/anthropics/acpone/internal/config"
 	"github.com/anthropics/acpone/internal/jsonrpc"
@@ -156,23 +157,51 @@ func (p *Process) Start() error {
 	return nil
 }
 
-// Stop stops the agent process
+// Stop stops the agent process and waits for it to exit
 func (p *Process) Stop() error {
 	p.mu.Lock()
-	defer p.mu.Unlock()
-
 	if p.cmd == nil {
+		p.mu.Unlock()
 		return nil
 	}
 
-	p.cmd.Process.Signal(os.Interrupt)
+	cmd := p.cmd
+	stdin := p.stdin
+
+	// Clear all state
 	p.cmd = nil
+	p.stdin = nil
+	p.stdout = nil
 	p.status = StatusStopped
 
 	// Reject pending requests
 	for id, req := range p.pending {
 		close(req.Result)
 		delete(p.pending, id)
+	}
+	p.mu.Unlock()
+
+	// Close stdin to signal the process
+	if stdin != nil {
+		stdin.Close()
+	}
+
+	// Send interrupt signal
+	_ = cmd.Process.Signal(os.Interrupt)
+
+	// Wait with timeout
+	done := make(chan error, 1)
+	go func() {
+		done <- cmd.Wait()
+	}()
+
+	select {
+	case <-done:
+		// Process exited normally
+	case <-time.After(3 * time.Second):
+		// Force kill if not responding
+		_ = cmd.Process.Kill()
+		<-done
 	}
 
 	return nil
