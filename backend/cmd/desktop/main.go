@@ -4,12 +4,154 @@ import (
 	_ "embed"
 	"fmt"
 	"net"
+	"os"
+	"path/filepath"
+	"strings"
 
 	"github.com/anthropics/acpone/gotray"
 	"github.com/anthropics/acpone/internal/api"
 	"github.com/anthropics/acpone/internal/config"
 	"github.com/anthropics/acpone/web"
 )
+
+func init() {
+	// GUI 应用不会继承终端的 PATH，需要手动设置
+	setupPath()
+}
+
+func setupPath() {
+	home, _ := os.UserHomeDir()
+	if home == "" {
+		return
+	}
+
+	var extraPaths []string
+	var pathSep string
+
+	switch gotray.OS() {
+	case "windows":
+		pathSep = ";"
+		extraPaths = getWindowsPaths(home)
+	case "darwin":
+		pathSep = ":"
+		extraPaths = getMacOSPaths(home)
+	default: // linux
+		pathSep = ":"
+		extraPaths = getLinuxPaths(home)
+	}
+
+	// 获取当前 PATH
+	currentPath := os.Getenv("PATH")
+	pathSet := make(map[string]bool)
+	for _, p := range strings.Split(currentPath, pathSep) {
+		pathSet[p] = true
+	}
+
+	// 添加新路径（如果存在且不重复）
+	var newPaths []string
+	for _, p := range extraPaths {
+		if _, err := os.Stat(p); err == nil && !pathSet[p] {
+			newPaths = append(newPaths, p)
+			pathSet[p] = true
+		}
+	}
+
+	if len(newPaths) > 0 {
+		finalPath := strings.Join(newPaths, pathSep) + pathSep + currentPath
+		os.Setenv("PATH", finalPath)
+	}
+}
+
+func getMacOSPaths(home string) []string {
+	paths := []string{
+		"/usr/local/bin",
+		"/opt/homebrew/bin",                       // Homebrew (Apple Silicon)
+		"/opt/homebrew/sbin",
+		filepath.Join(home, ".local", "bin"),      // pipx, etc.
+		filepath.Join(home, ".cargo", "bin"),      // Rust
+		filepath.Join(home, "go", "bin"),          // Go
+		filepath.Join(home, ".npm-global", "bin"), // npm global
+		filepath.Join(home, ".bun", "bin"),        // Bun
+	}
+
+	// nvm 安装的 node
+	paths = append(paths, findNodeVersions(filepath.Join(home, ".nvm", "versions", "node"), "bin")...)
+
+	// fnm 安装的 node
+	fnmDir := filepath.Join(home, "Library", "Application Support", "fnm", "node-versions")
+	paths = append(paths, findNodeVersions(fnmDir, "installation", "bin")...)
+
+	return paths
+}
+
+func getLinuxPaths(home string) []string {
+	paths := []string{
+		"/usr/local/bin",
+		"/snap/bin",                               // Snap packages
+		filepath.Join(home, ".local", "bin"),      // pipx, etc.
+		filepath.Join(home, ".cargo", "bin"),      // Rust
+		filepath.Join(home, "go", "bin"),          // Go
+		filepath.Join(home, ".npm-global", "bin"), // npm global
+		filepath.Join(home, ".bun", "bin"),        // Bun
+	}
+
+	// nvm 安装的 node
+	paths = append(paths, findNodeVersions(filepath.Join(home, ".nvm", "versions", "node"), "bin")...)
+
+	// fnm 安装的 node (Linux)
+	fnmDir := filepath.Join(home, ".local", "share", "fnm", "node-versions")
+	paths = append(paths, findNodeVersions(fnmDir, "installation", "bin")...)
+
+	return paths
+}
+
+func getWindowsPaths(home string) []string {
+	appData := os.Getenv("APPDATA")
+	localAppData := os.Getenv("LOCALAPPDATA")
+	programFiles := os.Getenv("ProgramFiles")
+
+	paths := []string{
+		filepath.Join(programFiles, "nodejs"),           // Node.js
+		filepath.Join(appData, "npm"),                   // npm global
+		filepath.Join(localAppData, "Programs", "Python", "Python311", "Scripts"), // Python
+		filepath.Join(localAppData, "Programs", "Python", "Python312", "Scripts"),
+		filepath.Join(home, ".cargo", "bin"),            // Rust
+		filepath.Join(home, "go", "bin"),                // Go
+		filepath.Join(home, ".bun", "bin"),              // Bun
+		filepath.Join(appData, "fnm", "node-versions"),  // fnm
+	}
+
+	// nvm-windows
+	nvmHome := os.Getenv("NVM_HOME")
+	if nvmHome != "" {
+		paths = append(paths, nvmHome)
+		nvmSymlink := os.Getenv("NVM_SYMLINK")
+		if nvmSymlink != "" {
+			paths = append(paths, nvmSymlink)
+		}
+	}
+
+	// fnm 安装的 node (Windows)
+	fnmDir := filepath.Join(appData, "fnm", "node-versions")
+	paths = append(paths, findNodeVersions(fnmDir, "installation")...)
+
+	return paths
+}
+
+func findNodeVersions(baseDir string, subPaths ...string) []string {
+	var paths []string
+	entries, err := os.ReadDir(baseDir)
+	if err != nil {
+		return paths
+	}
+	for _, entry := range entries {
+		if entry.IsDir() {
+			parts := append([]string{baseDir, entry.Name()}, subPaths...)
+			paths = append(paths, filepath.Join(parts...))
+		}
+	}
+	return paths
+}
 
 //go:embed icon/icon.png
 var icon []byte

@@ -94,6 +94,37 @@ EOF
 }
 
 
+# 构建单架构二进制
+build_binary() {
+    local arch=$1
+    local output=$2
+
+    log_info "构建 $arch 二进制..."
+
+    cd "$SCRIPT_DIR"
+
+    # macOS clang 支持交叉编译，设置目标架构
+    local cgo_cflags=""
+    local cgo_ldflags=""
+    if [ "$arch" = "amd64" ]; then
+        cgo_cflags="-arch x86_64"
+        cgo_ldflags="-arch x86_64"
+    elif [ "$arch" = "arm64" ]; then
+        cgo_cflags="-arch arm64"
+        cgo_ldflags="-arch arm64"
+    fi
+
+    env GOOS=darwin GOARCH=$arch CGO_ENABLED=1 \
+        CGO_CFLAGS="$cgo_cflags" CGO_LDFLAGS="$cgo_ldflags" \
+        go build -o "$output" .
+
+    if [ ! -f "$output" ]; then
+        log_error "构建失败: $output"
+    fi
+
+    log_info "$arch 二进制构建完成"
+}
+
 # 构建 macOS 应用
 build_mac() {
     local arch=$1
@@ -119,22 +150,54 @@ build_mac() {
     fi
 
     # 构建二进制
-    cd "$SCRIPT_DIR"
+    build_binary "$arch" "$app_dir/Contents/MacOS/acpone"
 
-    # 检测当前机器架构，systray 需要 CGO，无法交叉编译
-    local host_arch=$(uname -m)
-    local target_host_arch=$arch
-    [ "$arch" = "amd64" ] && target_host_arch="x86_64"
+    # 打包
+    (cd "$OUTPUT_DIR" && zip -r "${name}.zip" "${APP_NAME}.app" 1>/dev/null)
 
-    if [ "$host_arch" != "$target_host_arch" ]; then
-        log_error "无法交叉编译: systray 需要 CGO
-  当前机器: $host_arch
-  目标架构: $arch
-  请在 $arch 架构的 Mac 上构建，或使用 GitHub Actions CI"
+    log_info "完成: $OUTPUT_DIR/${name}.zip"
+}
+
+# 构建 Universal Binary (同时支持 Intel 和 Apple Silicon)
+build_mac_universal() {
+    local name="${APP_NAME}-mac-universal"
+
+    log_info "构建 macOS Universal Binary..."
+
+    mkdir -p "$OUTPUT_DIR"
+
+    # 创建 .app 目录结构
+    local app_dir="$OUTPUT_DIR/${APP_NAME}.app"
+    rm -rf "$app_dir"
+    mkdir -p "$app_dir/Contents/MacOS"
+    mkdir -p "$app_dir/Contents/Resources"
+
+    # 复制 Info.plist
+    generate_info_plist
+    cp "$OUTPUT_DIR/Info.plist" "$app_dir/Contents/Info.plist"
+
+    # 复制图标
+    if [ -f "$OUTPUT_DIR/icon.icns" ]; then
+        cp "$OUTPUT_DIR/icon.icns" "$app_dir/Contents/Resources/icon.icns"
     fi
 
-    env GOOS=darwin GOARCH=$arch CGO_ENABLED=1 \
-        go build -o "$app_dir/Contents/MacOS/acpone" .
+    # 构建两个架构的二进制
+    local tmp_arm64="$OUTPUT_DIR/acpone-arm64"
+    local tmp_amd64="$OUTPUT_DIR/acpone-amd64"
+
+    build_binary "arm64" "$tmp_arm64"
+    build_binary "amd64" "$tmp_amd64"
+
+    # 使用 lipo 合并为 Universal Binary
+    log_info "合并为 Universal Binary..."
+    lipo -create -output "$app_dir/Contents/MacOS/acpone" "$tmp_arm64" "$tmp_amd64"
+
+    # 验证
+    file "$app_dir/Contents/MacOS/acpone"
+    lipo -info "$app_dir/Contents/MacOS/acpone"
+
+    # 清理临时文件
+    rm -f "$tmp_arm64" "$tmp_amd64"
 
     # 打包
     (cd "$OUTPUT_DIR" && zip -r "${name}.zip" "${APP_NAME}.app" 1>/dev/null)
@@ -144,7 +207,7 @@ build_mac() {
 
 # 主函数
 main() {
-    local platform=${1:-mac-arm64}
+    local platform=${1:-mac-universal}
 
     log_info "开始构建 $APP_NAME v$VERSION"
     log_info "平台: $platform"
@@ -153,23 +216,28 @@ main() {
     build_web
 
     case "$platform" in
-        mac|mac-amd64)
+        mac-amd64|intel)
             build_mac_icon
             build_mac amd64
             ;;
-        mac-arm64|m1)
+        mac-arm64|m1|arm64)
             build_mac_icon
             build_mac arm64
             ;;
+        mac-universal|universal|mac)
+            build_mac_icon
+            build_mac_universal
+            ;;
         all)
             build_mac_icon
+            build_mac_universal
             build_mac amd64
             build_mac arm64
             ;;
         *)
-            log_warn "未知平台: $platform, 使用 mac-arm64"
+            log_warn "未知平台: $platform, 使用 mac-universal"
             build_mac_icon
-            build_mac arm64
+            build_mac_universal
             ;;
     esac
 

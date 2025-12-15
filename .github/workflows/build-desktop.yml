@@ -13,17 +13,7 @@ on:
 
 jobs:
   build:
-    strategy:
-      matrix:
-        include:
-          - os: macos-15-intel
-            arch: amd64
-            name: mac-amd64
-          - os: macos-15
-            arch: arm64
-            name: mac-arm64
-
-    runs-on: ${{ matrix.os }}
+    runs-on: macos-15
 
     steps:
       - name: Checkout
@@ -52,17 +42,17 @@ jobs:
         working-directory: web
         run: npm run build
 
-      - name: Build desktop app
+      - name: Build Universal macOS app
         working-directory: backend/cmd/desktop
         run: |
           chmod +x build.sh
-          ./build.sh ${{ matrix.name }}
+          ./build.sh mac-universal
 
       - name: Upload artifact
         uses: actions/upload-artifact@v4
         with:
-          name: ACPone-${{ matrix.name }}
-          path: backend/dist/ACPone-${{ matrix.name }}.zip
+          name: ACPone-mac-universal
+          path: backend/dist/ACPone-mac-universal.zip
 
   release:
     needs: build

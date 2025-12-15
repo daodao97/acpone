@@ -79,6 +79,11 @@ func (a *App) Quit() {
 	systray.Quit()
 }
 
+// OS 返回当前操作系统名称 (darwin, linux, windows)
+func OS() string {
+	return runtime.GOOS
+}
+
 // IsWindows 检查是否为 Windows 系统
 func IsWindows() bool {
 	return runtime.GOOS == "windows"
