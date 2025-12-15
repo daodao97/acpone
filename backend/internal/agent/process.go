@@ -60,6 +60,7 @@ type Process struct {
 	cmd        *exec.Cmd
 	stdin      io.WriteCloser
 	stdout     io.ReadCloser
+	stderr     io.ReadCloser
 	status     Status
 	requestID  int
 	workingDir string
@@ -142,7 +143,12 @@ func (p *Process) Start() error {
 		return err
 	}
 
-	cmd.Stderr = os.Stderr
+	// Capture stderr (on Windows without console, os.Stderr doesn't work)
+	stderr, err := cmd.StderrPipe()
+	if err != nil {
+		p.setStatus(StatusError)
+		return err
+	}
 
 	if err := cmd.Start(); err != nil {
 		p.setStatus(StatusError)
@@ -153,11 +159,35 @@ func (p *Process) Start() error {
 	p.cmd = cmd
 	p.stdin = stdin
 	p.stdout = stdout
+	p.stderr = stderr
 	p.status = StatusRunning
 	p.mu.Unlock()
 
 	go p.readLoop()
+	go p.readStderr()
 	return nil
+}
+
+// readStderr reads and logs stderr output
+func (p *Process) readStderr() {
+	p.mu.Lock()
+	stderr := p.stderr
+	p.mu.Unlock()
+
+	if stderr == nil {
+		return
+	}
+
+	buf := make([]byte, 4096)
+	for {
+		n, err := stderr.Read(buf)
+		if n > 0 {
+			fmt.Printf("!!! [%s] stderr: %s", p.ID, string(buf[:n]))
+		}
+		if err != nil {
+			break
+		}
+	}
 }
 
 // Stop stops the agent process and waits for it to exit
