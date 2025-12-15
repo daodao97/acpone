@@ -1,7 +1,7 @@
 package main
 
 import (
-	_ "embed"
+	"embed"
 	"fmt"
 	"net"
 	"os"
@@ -153,11 +153,25 @@ func findNodeVersions(baseDir string, subPaths ...string) []string {
 	return paths
 }
 
-//go:embed icon/icon.png
-var icon []byte
+//go:embed icon/*
+var iconFS embed.FS
 
-//go:embed icon/icon_off.png
-var iconOff []byte
+// 图标变量 (PNG for macOS/Linux, ICO for Windows)
+var (
+	icon       []byte
+	iconOff    []byte
+	iconWin    []byte
+	iconOffWin []byte
+)
+
+func loadIcons() {
+	// PNG 图标 (macOS/Linux)
+	icon, _ = iconFS.ReadFile("icon/icon.png")
+	iconOff, _ = iconFS.ReadFile("icon/icon_off.png")
+	// ICO 图标 (Windows) - 可选，如果不存在会回退到 PNG
+	iconWin, _ = iconFS.ReadFile("icon/icon.ico")
+	iconOffWin, _ = iconFS.ReadFile("icon/icon_off.ico")
+}
 
 const (
 	appName       = "ACPone"
@@ -173,6 +187,8 @@ var (
 )
 
 func main() {
+	loadIcons()
+
 	app := &gotray.App{
 		Name:        appName,
 		DisplayName: appName,
@@ -180,6 +196,8 @@ func main() {
 		Version:     appVersion,
 		Icon:        icon,
 		IconOff:     iconOff,
+		IconWin:     iconWin,
+		IconOffWin:  iconOffWin,
 		OnReady:     onReady,
 		OnExit:      onExit,
 	}

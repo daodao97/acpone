@@ -98,8 +98,29 @@ jobs:
         working-directory: web
         run: npm run build
 
-      - name: Install rsrc for Windows icon
-        run: go install github.com/akavel/rsrc@latest
+      - name: Install build tools
+        run: |
+          go install github.com/akavel/rsrc@latest
+          choco install imagemagick -y
+
+      - name: Generate Windows icons (ICO)
+        working-directory: backend/cmd/desktop/icon
+        shell: bash
+        run: |
+          # Convert PNG to ICO using ImageMagick
+          if [ -f "icon.png" ]; then
+            magick icon.png -define icon:auto-resize=256,128,64,48,32,16 icon.ico
+            echo "Generated icon.ico"
+          fi
+          if [ -f "icon_off.png" ]; then
+            magick icon_off.png -define icon:auto-resize=256,128,64,48,32,16 icon_off.ico
+            echo "Generated icon_off.ico"
+          fi
+          if [ -f "logo.png" ]; then
+            magick logo.png -define icon:auto-resize=256,128,64,48,32,16 logo.ico
+            echo "Generated logo.ico"
+          fi
+          ls -la *.ico 2>/dev/null || echo "No ICO files generated"
 
       - name: Build Windows app
         working-directory: backend/cmd/desktop
@@ -107,7 +128,7 @@ jobs:
         run: |
           mkdir -p ../../dist
 
-          # Build with icon if available
+          # Embed icon into exe if available
           if [ -f "icon/logo.ico" ]; then
             rsrc -ico icon/logo.ico -o rsrc_windows.syso || true
           fi
