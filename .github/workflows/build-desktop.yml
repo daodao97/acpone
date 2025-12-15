@@ -1,0 +1,227 @@
+name: Build Desktop App
+
+on:
+  push:
+    tags:
+      - 'v*'
+  workflow_dispatch:
+    inputs:
+      version:
+        description: 'Version tag (e.g., v1.0.0)'
+        required: false
+        default: 'dev'
+
+jobs:
+  # macOS Universal Binary (Intel + Apple Silicon)
+  build-macos:
+    runs-on: macos-15
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+          cache-dependency-path: web/package-lock.json
+
+      - name: Setup Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: '1.21'
+          cache-dependency-path: |
+            backend/go.sum
+            gotray/go.sum
+
+      - name: Install frontend dependencies
+        working-directory: web
+        run: npm ci
+
+      - name: Build frontend
+        working-directory: web
+        run: npm run build
+
+      - name: Build macOS apps (Universal + ARM64 + Intel)
+        working-directory: backend/cmd/desktop
+        run: |
+          chmod +x build.sh
+          ./build.sh mac-universal
+          ./build.sh mac-arm64
+          ./build.sh mac-amd64
+
+      - name: Upload macOS Universal
+        uses: actions/upload-artifact@v4
+        with:
+          name: ACPone-mac-universal
+          path: backend/dist/ACPone-mac-universal.zip
+
+      - name: Upload macOS ARM64
+        uses: actions/upload-artifact@v4
+        with:
+          name: ACPone-mac-arm64
+          path: backend/dist/ACPone-mac-arm64.zip
+
+      - name: Upload macOS Intel
+        uses: actions/upload-artifact@v4
+        with:
+          name: ACPone-mac-amd64
+          path: backend/dist/ACPone-mac-amd64.zip
+
+  # Windows amd64
+  build-windows:
+    runs-on: windows-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+          cache-dependency-path: web/package-lock.json
+
+      - name: Setup Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: '1.21'
+          cache-dependency-path: |
+            backend/go.sum
+            gotray/go.sum
+
+      - name: Install frontend dependencies
+        working-directory: web
+        run: npm ci
+
+      - name: Build frontend
+        working-directory: web
+        run: npm run build
+
+      - name: Install build tools
+        run: |
+          go install github.com/akavel/rsrc@latest
+          choco install imagemagick -y
+
+      - name: Generate Windows icons (ICO)
+        working-directory: backend/cmd/desktop/icon
+        shell: bash
+        run: |
+          # Convert PNG to ICO using ImageMagick
+          if [ -f "icon.png" ]; then
+            magick icon.png -define icon:auto-resize=256,128,64,48,32,16 icon.ico
+            echo "Generated icon.ico"
+          fi
+          if [ -f "icon_off.png" ]; then
+            magick icon_off.png -define icon:auto-resize=256,128,64,48,32,16 icon_off.ico
+            echo "Generated icon_off.ico"
+          fi
+          if [ -f "logo.png" ]; then
+            magick logo.png -define icon:auto-resize=256,128,64,48,32,16 logo.ico
+            echo "Generated logo.ico"
+          fi
+          ls -la *.ico 2>/dev/null || echo "No ICO files generated"
+
+      - name: Build Windows app
+        working-directory: backend/cmd/desktop
+        shell: bash
+        run: |
+          mkdir -p ../../dist
+
+          # Embed icon into exe if available
+          if [ -f "icon/logo.ico" ]; then
+            rsrc -ico icon/logo.ico -o rsrc_windows.syso || true
+          fi
+
+          go build -ldflags "-H=windowsgui" -o ../../dist/ACPone.exe .
+
+          # Clean up syso
+          rm -f rsrc_windows.syso
+
+          # Create zip
+          cd ../../dist
+          7z a ACPone-windows-amd64.zip ACPone.exe
+          rm -f ACPone.exe
+
+      - name: Upload Windows artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: ACPone-windows-amd64
+          path: backend/dist/ACPone-windows-amd64.zip
+
+  # Linux amd64
+  build-linux:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+          cache-dependency-path: web/package-lock.json
+
+      - name: Setup Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: '1.21'
+          cache-dependency-path: |
+            backend/go.sum
+            gotray/go.sum
+
+      - name: Install Linux dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y gcc libgtk-3-dev libayatana-appindicator3-dev
+
+      - name: Install frontend dependencies
+        working-directory: web
+        run: npm ci
+
+      - name: Build frontend
+        working-directory: web
+        run: npm run build
+
+      - name: Build Linux app
+        working-directory: backend/cmd/desktop
+        run: |
+          mkdir -p ../../dist
+
+          CGO_ENABLED=1 go build -o ../../dist/ACPone-linux-amd64 .
+
+          cd ../../dist
+          zip ACPone-linux-amd64.zip ACPone-linux-amd64
+          rm -f ACPone-linux-amd64
+
+      - name: Upload Linux artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: ACPone-linux-amd64
+          path: backend/dist/ACPone-linux-amd64.zip
+
+  # Create Release
+  release:
+    needs: [build-macos, build-windows, build-linux]
+    runs-on: ubuntu-latest
+    if: startsWith(github.ref, 'refs/tags/v')
+
+    steps:
+      - name: Download all artifacts
+        uses: actions/download-artifact@v4
+        with:
+          path: artifacts
+
+      - name: List artifacts
+        run: find artifacts -type f -name "*.zip"
+
+      - name: Create Release
+        uses: softprops/action-gh-release@v1
+        with:
+          files: artifacts/**/*.zip
+          draft: false
+          prerelease: false
+          generate_release_notes: true
+        env:
+          GITHUB_TOKEN: ${{ secrets.MY_GITHUB_TOKEN }}
