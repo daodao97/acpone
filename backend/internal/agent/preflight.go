@@ -117,6 +117,7 @@ func isPackageCached(packageName string) bool {
 	// Check if package exists in npm cache using npm cache ls
 	// or check npx cache directory directly
 	cmd := exec.Command("npm", "list", "-g", "--depth=0", packageName)
+	hideWindow(cmd)
 	err := cmd.Run()
 	if err == nil {
 		fmt.Printf("   🔍 %s: globally installed\n", packageName)
@@ -150,6 +151,7 @@ func installPackage(packageName string) error {
 	fmt.Printf("   📦 Installing: %s\n", cmdStr)
 
 	cmd := exec.Command("npx", "-y", packageName, "--help")
+	hideWindow(cmd)
 	output, err := cmd.CombinedOutput()
 
 	outputStr := string(output)

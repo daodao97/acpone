@@ -11,6 +11,8 @@ import (
 	"strings"
 	"sync"
 	"time"
+
+	"github.com/anthropics/acpone/internal/sysutil"
 )
 
 // DependencyItem represents a single dependency check item
@@ -522,6 +524,7 @@ func extractPackageName(command string, args []string) string {
 
 func isPackageCached(packageName string) bool {
 	cmd := exec.Command("npm", "list", "-g", "--depth=0", packageName)
+	sysutil.HideWindow(cmd)
 	if err := cmd.Run(); err == nil {
 		return true
 	}
@@ -633,6 +636,7 @@ func installPackageWithProgress(packageName string, logFn func(string)) error {
 	logFn(fmt.Sprintf("Running: %s", cmdStr))
 
 	cmd := exec.Command("npx", "-y", "--registry="+registry, packageName, "--help")
+	sysutil.HideWindow(cmd)
 	output, err := cmd.CombinedOutput()
 	outputStr := string(output)
 
@@ -665,6 +669,7 @@ func installGlobalPackage(packageName string, logFn func(string)) error {
 	// First, try to uninstall existing package to avoid ENOTEMPTY errors
 	log.Printf("[Setup] Uninstalling existing %s (if any)...", packageName)
 	uninstallCmd := exec.Command("npm", "uninstall", "-g", packageName)
+	sysutil.HideWindow(uninstallCmd)
 	uninstallCmd.Run() // Ignore errors, package may not exist
 
 	// Clean up leftover temp directories that cause ENOTEMPTY errors
@@ -677,6 +682,7 @@ func installGlobalPackage(packageName string, logFn func(string)) error {
 	logFn(fmt.Sprintf("Running: %s", cmdStr))
 
 	cmd := exec.Command("npm", "install", "-g", "--registry="+registry, packageName)
+	sysutil.HideWindow(cmd)
 	output, err := cmd.CombinedOutput()
 	outputStr := string(output)
 
@@ -705,6 +711,7 @@ func installGlobalPackage(packageName string, logFn func(string)) error {
 func cleanupNpmTempDirs(packageName string) {
 	// Get npm global prefix
 	cmd := exec.Command("npm", "config", "get", "prefix")
+	sysutil.HideWindow(cmd)
 	output, err := cmd.Output()
 	if err != nil {
 		return

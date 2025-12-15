@@ -127,6 +127,9 @@ func (p *Process) Start() error {
 		cmd.Env = append(cmd.Env, fmt.Sprintf("%s=%s", k, v))
 	}
 
+	// Windows: 隐藏控制台窗口
+	hideWindow(cmd)
+
 	stdin, err := cmd.StdinPipe()
 	if err != nil {
 		p.setStatus(StatusError)
