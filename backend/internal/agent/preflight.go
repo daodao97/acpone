@@ -5,6 +5,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"sync"
 
@@ -114,8 +115,7 @@ func ensurePackage(packageName string) (string, error) {
 }
 
 func isPackageCached(packageName string) bool {
-	// Check if package exists in npm cache using npm cache ls
-	// or check npx cache directory directly
+	// Check if package exists in npm global
 	cmd := exec.Command("npm", "list", "-g", "--depth=0", packageName)
 	hideWindow(cmd)
 	err := cmd.Run()
@@ -124,12 +124,31 @@ func isPackageCached(packageName string) bool {
 		return true
 	}
 
-	// Check npx cache by looking for the package in ~/.npm/_npx
+	// Check npx cache
 	home, _ := os.UserHomeDir()
-	npxCacheDir := filepath.Join(home, ".npm", "_npx")
+	var npxCacheDirs []string
 
-	// Walk through npx cache directories to find package
-	if entries, err := os.ReadDir(npxCacheDir); err == nil {
+	if runtime.GOOS == "windows" {
+		// Windows: %LOCALAPPDATA%\npm-cache\_npx 或 %APPDATA%\npm-cache\_npx
+		localAppData := os.Getenv("LOCALAPPDATA")
+		appData := os.Getenv("APPDATA")
+		if localAppData != "" {
+			npxCacheDirs = append(npxCacheDirs, filepath.Join(localAppData, "npm-cache", "_npx"))
+		}
+		if appData != "" {
+			npxCacheDirs = append(npxCacheDirs, filepath.Join(appData, "npm-cache", "_npx"))
+		}
+		npxCacheDirs = append(npxCacheDirs, filepath.Join(home, ".npm", "_npx"))
+	} else {
+		// macOS/Linux
+		npxCacheDirs = append(npxCacheDirs, filepath.Join(home, ".npm", "_npx"))
+	}
+
+	for _, npxCacheDir := range npxCacheDirs {
+		entries, err := os.ReadDir(npxCacheDir)
+		if err != nil {
+			continue
+		}
 		for _, entry := range entries {
 			if entry.IsDir() {
 				pkgJsonPath := filepath.Join(npxCacheDir, entry.Name(), "node_modules", packageName, "package.json")

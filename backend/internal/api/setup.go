@@ -523,29 +523,54 @@ func extractPackageName(command string, args []string) string {
 }
 
 func isPackageCached(packageName string) bool {
+	// 检查全局安装
 	cmd := exec.Command("npm", "list", "-g", "--depth=0", packageName)
 	sysutil.HideWindow(cmd)
 	if err := cmd.Run(); err == nil {
 		return true
 	}
 
+	// 检查 npx 缓存
 	home, _ := os.UserHomeDir()
-	npxCacheDir := filepath.Join(home, ".npm", "_npx")
+	var npxCacheDirs []string
 
-	entries, err := os.ReadDir(npxCacheDir)
-	if err != nil {
-		return false
+	if isWindows() {
+		// Windows: %LOCALAPPDATA%\npm-cache\_npx 或 %APPDATA%\npm-cache\_npx
+		localAppData := os.Getenv("LOCALAPPDATA")
+		appData := os.Getenv("APPDATA")
+		if localAppData != "" {
+			npxCacheDirs = append(npxCacheDirs, filepath.Join(localAppData, "npm-cache", "_npx"))
+		}
+		if appData != "" {
+			npxCacheDirs = append(npxCacheDirs, filepath.Join(appData, "npm-cache", "_npx"))
+		}
+		// 也检查用户目录下的 .npm
+		npxCacheDirs = append(npxCacheDirs, filepath.Join(home, ".npm", "_npx"))
+	} else {
+		// macOS/Linux
+		npxCacheDirs = append(npxCacheDirs, filepath.Join(home, ".npm", "_npx"))
 	}
 
-	for _, entry := range entries {
-		if entry.IsDir() {
-			pkgPath := filepath.Join(npxCacheDir, entry.Name(), "node_modules", packageName, "package.json")
-			if _, err := os.Stat(pkgPath); err == nil {
-				return true
+	for _, npxCacheDir := range npxCacheDirs {
+		entries, err := os.ReadDir(npxCacheDir)
+		if err != nil {
+			continue
+		}
+
+		for _, entry := range entries {
+			if entry.IsDir() {
+				pkgPath := filepath.Join(npxCacheDir, entry.Name(), "node_modules", packageName, "package.json")
+				if _, err := os.Stat(pkgPath); err == nil {
+					return true
+				}
 			}
 		}
 	}
 	return false
+}
+
+func isWindows() bool {
+	return os.PathSeparator == '\\' && os.PathListSeparator == ';'
 }
 
 func commandExists(command string) bool {
