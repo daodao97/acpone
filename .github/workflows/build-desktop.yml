@@ -16,7 +16,7 @@ jobs:
     strategy:
       matrix:
         include:
-          - os: macos-12
+          - os: macos-15-intel
             arch: amd64
             name: mac-amd64
           - os: macos-15
