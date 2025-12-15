@@ -125,7 +125,14 @@ func (p *Process) Start() error {
 	cmd := exec.Command(p.config.Command, p.config.Args...)
 	cmd.Env = os.Environ()
 	for k, v := range p.config.Env {
-		cmd.Env = append(cmd.Env, fmt.Sprintf("%s=%s", k, v))
+		envVar := fmt.Sprintf("%s=%s", k, v)
+		cmd.Env = append(cmd.Env, envVar)
+		// Log env vars (mask sensitive values)
+		if k == "ANTHROPIC_API_KEY" || k == "OPENAI_API_KEY" {
+			fmt.Printf("ENV [%s] %s=***\n", p.ID, k)
+		} else {
+			fmt.Printf("ENV [%s] %s\n", p.ID, envVar)
+		}
 	}
 
 	// Windows: 隐藏控制台窗口
