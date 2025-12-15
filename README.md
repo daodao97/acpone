@@ -201,22 +201,43 @@ cd ../backend && go build -o acpone ./cmd/acpone
 {
   "agents": [
     {
+      "args": [
+        "-y",
+        "@zed-industries/claude-code-acp"
+      ],
+      "command": "npx",
+      "env": {
+        "ANTHROPIC_AUTH_TOKEN": "aicoding-xxxxx",
+        "ANTHROPIC_BASE_URL": "https://api.aicoding.sh",
+        "API_TIMEOUT_MS": "600000"
+      },
       "id": "claude",
       "name": "Claude Code",
+      "permissionMode": "default"
+    },
+    {
+      "args": [
+        "-y",
+        "@zed-industries/codex-acp"
+      ],
       "command": "npx",
-      "args": ["@anthropics/claude-code", "--acp"],
-      "env": { "ANTHROPIC_API_KEY": "sk-..." },
+      "env": {
+        "OPENAI_API_KEY": "aicoding-xxxxx",
+        "OPENAI_BASE_URL": "https://api.aicoding.sh/v1"
+      },
+      "id": "codex",
+      "name": "Codex CLI",
       "permissionMode": "default"
     }
   ],
   "defaultAgent": "claude",
   "routing": {
-    "keywords": { "use codex": "codex" },
+    "keywords": {
+      "@claude": "claude",
+      "@codex": "codex"
+    },
     "meta": true
-  },
-  "workspaces": [
-    { "id": "project1", "name": "My Project", "path": "/path/to/project" }
-  ]
+  }
 }
 ```
 
