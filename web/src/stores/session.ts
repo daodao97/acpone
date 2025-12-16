@@ -24,9 +24,20 @@ const currentWorkspace = ref<string>('')
 const isLoading = ref(false)
 const isSending = ref(false)
 const agentSessionId = ref<string | null>(null)
+const sendingSessionId = ref<string | null>(null) // Track which session is currently streaming
 
-// Stream items for current response (tool calls interleaved with messages)
-const streamItems = ref<StreamItem[]>([])
+// Stream items stored per session (tool calls interleaved with messages)
+const streamItemsBySession = ref<Record<string, StreamItem[]>>({})
+
+// Session cache to preserve messages during streaming (prevents loss when switching sessions)
+const sessionCache = ref<Record<string, Session>>({})
+
+// Computed: current session's stream items
+const streamItems = computed(() => {
+  const sessionId = currentSession.value?.id
+  if (!sessionId) return []
+  return streamItemsBySession.value[sessionId] || []
+})
 
 // Computed
 const currentSessionId = computed(() => currentSession.value?.id || null)
@@ -104,13 +115,35 @@ async function loadSessions(skipAutoSelect = false) {
 async function selectSession(id: string) {
   isLoading.value = true
   try {
-    // Commit any pending stream items before switching
-    commitStreamItems()
-    const session = await api.fetchSession(id)
+    // Save current session to cache before switching (preserves uncommitted messages)
+    if (currentSession.value) {
+      sessionCache.value[currentSession.value.id] = currentSession.value
+    }
+
+    // Check if target session is in cache and has streaming content or pending items
+    const streamItems = streamItemsBySession.value[id]
+    const hasStreamingContent = streamItems !== undefined && streamItems.length > 0
+    const cachedSession = sessionCache.value[id]
+
+    let session: Session | null = null
+    if (cachedSession && hasStreamingContent) {
+      // Use cached version to preserve streaming state
+      session = cachedSession
+    } else {
+      // Fetch from server
+      session = await api.fetchSession(id)
+      // Merge with cache if exists (preserve any messages added during streaming)
+      if (cachedSession && session) {
+        // If cached has more messages, use cached messages
+        if (cachedSession.messages.length > session.messages.length) {
+          session.messages = cachedSession.messages
+        }
+      }
+    }
+
     if (session) {
       currentSession.value = session
       currentAgent.value = session.activeAgent
-      streamItems.value = []
       // Auto-select workspace based on session's workspace
       if (session.workspaceId && session.workspaceId !== currentWorkspace.value) {
         currentWorkspace.value = session.workspaceId
@@ -135,7 +168,8 @@ async function createNewSession() {
       updatedAt: meta.updatedAt,
     }
     currentAgent.value = meta.activeAgent
-    streamItems.value = []
+    // Initialize empty stream items for new session
+    streamItemsBySession.value[meta.id] = []
     await loadSessions()
   } finally {
     isLoading.value = false
@@ -147,6 +181,10 @@ async function removeSession(id: string) {
   if (currentSession.value?.id === id) {
     currentSession.value = null
   }
+  // Clean up all data for deleted session
+  delete streamItemsBySession.value[id]
+  delete pendingStreamAgentBySession.value[id]
+  delete sessionCache.value[id]
   await loadSessions()
 }
 
@@ -169,9 +207,19 @@ function addErrorMessage(content: string) {
   currentSession.value.messages.push({ role: 'assistant', content, isError: true })
 }
 
-function addToolCall(tool: ToolCall) {
+function addToolCall(tool: ToolCall, sessionId?: string) {
+  // Use provided sessionId or sendingSessionId or currentSession
+  const targetId = sessionId || sendingSessionId.value || currentSession.value?.id
+  if (!targetId) return
+
+  // Ensure array exists for this session
+  if (!streamItemsBySession.value[targetId]) {
+    streamItemsBySession.value[targetId] = []
+  }
+  const items = streamItemsBySession.value[targetId]
+
   // Add to stream items in order
-  const existing = streamItems.value.find(
+  const existing = items.find(
     (item) => item.type === 'tool' && item.data.toolCallId === tool.toolCallId
   )
   if (existing && existing.type === 'tool') {
@@ -191,48 +239,78 @@ function addToolCall(tool: ToolCall) {
     existing.data = merged
   } else {
     // Add new tool call
-    streamItems.value.push({ type: 'tool', data: tool })
+    items.push({ type: 'tool', data: tool })
   }
 }
 
-function addStreamingText(text: string) {
+function addStreamingText(text: string, sessionId?: string) {
+  // Use provided sessionId or sendingSessionId or currentSession
+  const targetId = sessionId || sendingSessionId.value || currentSession.value?.id
+  if (!targetId) return
+
+  // Ensure array exists for this session
+  if (!streamItemsBySession.value[targetId]) {
+    streamItemsBySession.value[targetId] = []
+  }
+  const items = streamItemsBySession.value[targetId]
+
   // Find last text item or create new one
-  const lastItem = streamItems.value[streamItems.value.length - 1]
+  const lastItem = items[items.length - 1]
   if (lastItem && lastItem.type === 'text') {
     lastItem.data += text
   } else {
-    streamItems.value.push({ type: 'text', data: text })
+    items.push({ type: 'text', data: text })
   }
 }
 
-function clearStreamItems() {
-  streamItems.value = []
+function clearStreamItems(sessionId?: string) {
+  const targetId = sessionId || currentSession.value?.id
+  if (targetId) {
+    streamItemsBySession.value[targetId] = []
+  }
 }
 
-// Track agent for pending stream items
-const pendingStreamAgent = ref<string>('')
+// Track agent for pending stream items (per session)
+const pendingStreamAgentBySession = ref<Record<string, string>>({})
 
-function finalizeStreamItems(agent: string) {
+function finalizeStreamItems(agent: string, sessionId?: string) {
   // Don't move items immediately - just mark the agent
   // Items will be moved when user sends next message (in commitStreamItems)
-  pendingStreamAgent.value = agent
+  const targetId = sessionId || sendingSessionId.value || currentSession.value?.id
+  if (targetId) {
+    pendingStreamAgentBySession.value[targetId] = agent
+  }
 }
 
-function commitStreamItems() {
-  if (!currentSession.value || streamItems.value.length === 0) return
+function commitStreamItems(sessionId?: string) {
+  const targetId = sessionId || currentSession.value?.id
+  if (!targetId) return
 
-  const agent = pendingStreamAgent.value || 'claude'
+  const items = streamItemsBySession.value[targetId]
+  if (!items || items.length === 0) return
+
+  // Find the session to commit to (check current session first, then cache)
+  let session: Session | null = null
+  if (targetId === currentSession.value?.id) {
+    session = currentSession.value
+  } else if (sessionCache.value[targetId]) {
+    session = sessionCache.value[targetId]
+  }
+
+  if (!session) return
+
+  const agent = pendingStreamAgentBySession.value[targetId] || 'claude'
 
   // Move stream items to messages
-  for (const item of streamItems.value) {
+  for (const item of items) {
     if (item.type === 'text') {
-      currentSession.value.messages.push({
+      session.messages.push({
         role: 'assistant',
         content: item.data,
         agent,
       })
     } else if (item.type === 'tool') {
-      currentSession.value.messages.push({
+      session.messages.push({
         role: 'assistant',
         content: '',
         agent,
@@ -241,8 +319,11 @@ function commitStreamItems() {
     }
   }
 
-  streamItems.value = []
-  pendingStreamAgent.value = ''
+  // Update cache
+  sessionCache.value[targetId] = session
+
+  streamItemsBySession.value[targetId] = []
+  delete pendingStreamAgentBySession.value[targetId]
 }
 
 function setConversationId(id: string) {
@@ -259,11 +340,15 @@ function setWorkspace(workspaceId: string) {
   currentWorkspace.value = workspaceId
   // Clear current session to show new conversation page
   currentSession.value = null
-  streamItems.value = []
+  // No need to clear streamItems - they are stored per session
 }
 
 function setSending(value: boolean) {
   isSending.value = value
+}
+
+function setSendingSessionId(id: string | null) {
+  sendingSessionId.value = id
 }
 
 function setAgentSessionId(id: string | null) {
@@ -330,6 +415,8 @@ export function useSessionStore() {
     setCommands,
     agentSessionId,
     setAgentSessionId,
+    sendingSessionId,
+    setSendingSessionId,
     cancelCurrentChat,
   }
 }

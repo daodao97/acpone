@@ -151,8 +151,15 @@ func (p *Process) handleMessage(msg *jsonrpc.Message) {
 
 	// Notification from agent
 	if msg.IsNotification() {
-		if p.onNotification != nil {
-			p.onNotification(msg)
+		p.mu.Lock()
+		handlers := make([]func(*jsonrpc.Message), len(p.notificationHandlers))
+		for i, h := range p.notificationHandlers {
+			handlers[i] = h.handler
+		}
+		p.mu.Unlock()
+
+		for _, handler := range handlers {
+			handler(msg)
 		}
 	}
 }
@@ -186,9 +193,16 @@ func (p *Process) handlePermissionRequest(msg *jsonrpc.Message) {
 		toolCallID = fmt.Sprintf("perm-%d", time.Now().UnixMilli())
 	}
 
-	// Emit permission request for frontend
-	if p.onPermission != nil {
-		p.onPermission(&req)
+	// Emit permission request to all registered handlers
+	p.mu.Lock()
+	permHandlers := make([]func(*PermissionRequest), len(p.permissionHandlers))
+	for i, h := range p.permissionHandlers {
+		permHandlers[i] = h.handler
+	}
+	p.mu.Unlock()
+
+	for _, handler := range permHandlers {
+		handler(&req)
 	}
 
 	// Wait for response

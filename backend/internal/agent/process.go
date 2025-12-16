@@ -52,6 +52,18 @@ type PendingPermission struct {
 	Response  chan string // optionId
 }
 
+// notificationCallback is a registered notification callback with cleanup support
+type notificationCallback struct {
+	id      int
+	handler func(msg *jsonrpc.Message)
+}
+
+// permissionCallback is a registered permission callback with cleanup support
+type permissionCallback struct {
+	id      int
+	handler func(req *PermissionRequest)
+}
+
 // Process wraps a backend ACP process
 type Process struct {
 	ID         string
@@ -64,14 +76,15 @@ type Process struct {
 	status     Status
 	requestID  int
 	workingDir string
+	handlerID  int // Counter for handler IDs
 
 	pending     map[int]*PendingRequest
 	permissions map[string]*PendingPermission
 	mu          sync.Mutex
 
-	// Event handlers
-	onNotification func(msg *jsonrpc.Message)
-	onPermission   func(req *PermissionRequest)
+	// Event handlers (support multiple concurrent handlers)
+	notificationHandlers []notificationCallback
+	permissionHandlers   []permissionCallback
 }
 
 // NewProcess creates a new agent process
@@ -102,14 +115,46 @@ func (p *Process) SetWorkingDir(dir string) {
 	p.workingDir = dir
 }
 
-// OnNotification sets notification handler
-func (p *Process) OnNotification(fn func(*jsonrpc.Message)) {
-	p.onNotification = fn
+// OnNotification registers a notification handler and returns a cleanup function
+func (p *Process) OnNotification(fn func(*jsonrpc.Message)) func() {
+	p.mu.Lock()
+	p.handlerID++
+	id := p.handlerID
+	p.notificationHandlers = append(p.notificationHandlers, notificationCallback{id: id, handler: fn})
+	p.mu.Unlock()
+
+	// Return cleanup function
+	return func() {
+		p.mu.Lock()
+		defer p.mu.Unlock()
+		for i, h := range p.notificationHandlers {
+			if h.id == id {
+				p.notificationHandlers = append(p.notificationHandlers[:i], p.notificationHandlers[i+1:]...)
+				break
+			}
+		}
+	}
 }
 
-// OnPermission sets permission request handler
-func (p *Process) OnPermission(fn func(*PermissionRequest)) {
-	p.onPermission = fn
+// OnPermission registers a permission request handler and returns a cleanup function
+func (p *Process) OnPermission(fn func(*PermissionRequest)) func() {
+	p.mu.Lock()
+	p.handlerID++
+	id := p.handlerID
+	p.permissionHandlers = append(p.permissionHandlers, permissionCallback{id: id, handler: fn})
+	p.mu.Unlock()
+
+	// Return cleanup function
+	return func() {
+		p.mu.Lock()
+		defer p.mu.Unlock()
+		for i, h := range p.permissionHandlers {
+			if h.id == id {
+				p.permissionHandlers = append(p.permissionHandlers[:i], p.permissionHandlers[i+1:]...)
+				break
+			}
+		}
+	}
 }
 
 // Start starts the agent process

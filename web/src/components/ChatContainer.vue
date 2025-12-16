@@ -24,7 +24,6 @@ const {
 const { t } = useI18n()
 
 const chatContainer = ref<HTMLElement | null>(null)
-const isStreaming = ref(false)
 const pendingPermission = ref<PermissionRequest | null>(null)
 
 function scrollToBottom() {
@@ -39,11 +38,15 @@ watch(messages, () => scrollToBottom(), { deep: true })
 watch(streamItems, () => scrollToBottom(), { deep: true })
 watch(pendingPermission, () => scrollToBottom())
 
+// Check if current session is streaming
+const isCurrentSessionStreaming = computed(() => {
+  return store.sendingSessionId.value === currentSession.value?.id
+})
+
 async function handleSend(message: string, files: MessageFile[] = []) {
   store.setSending(true)
   store.commitStreamItems() // Move previous stream items to messages
   store.clearStreamItems()
-  isStreaming.value = true
   pendingPermission.value = null
 
   // Create session if none exists
@@ -51,17 +54,23 @@ async function handleSend(message: string, files: MessageFile[] = []) {
     await store.createNewSession()
   }
 
+  // Track which session we're sending to
+  const targetSessionId = store.currentSessionId.value
+  store.setSendingSessionId(targetSessionId)
+
   // Store message with file info
   store.addUserMessage(message, files.length > 0 ? files : undefined)
 
   sendMessage(
     message,
-    store.currentSessionId.value,
+    targetSessionId,
     currentWorkspace.value || null,
     files,
     (event: unknown) => {
       const data = event as StreamEvent & { permission_request?: PermissionRequest }
-      handleStreamEvent(data)
+      // Always process events to update the target session's stream items
+      // even if user switched to another session
+      handleStreamEvent(data, targetSessionId)
     }
   )
 }
@@ -85,7 +94,8 @@ function handleStreamEvent(
     _eventType?: string
     commands?: SlashCommand[]
     agent?: string
-  } & Partial<ToolCallEvent>
+  } & Partial<ToolCallEvent>,
+  targetSessionId?: string | null
 ) {
   // Handle commands event (with agent info)
   if (data._eventType === 'commands' && data.commands) {
@@ -107,13 +117,15 @@ function handleStreamEvent(
       rawInput: data.rawInput || '',
       output: data.output || '',
       error: data.error || '',
-    })
+    }, targetSessionId || undefined)
     return
   }
 
-  // Permission request
+  // Permission request - only show if on same session
   if ((data as unknown as { sessionId?: string; options?: unknown[] }).options) {
-    pendingPermission.value = data as unknown as PermissionRequest
+    if (store.currentSessionId.value === targetSessionId) {
+      pendingPermission.value = data as unknown as PermissionRequest
+    }
     return
   }
 
@@ -141,30 +153,30 @@ function handleStreamEvent(
       case 'agent_message_chunk':
       case 'agent_thought_chunk':
         if (update.content?.type === 'text' && update.content.text) {
-          store.addStreamingText(update.content.text)
+          store.addStreamingText(update.content.text, targetSessionId || undefined)
         }
         break
 
       case 'tool_call':
       case 'tool_call_update':
-        handleToolUpdate(update)
+        handleToolUpdate(update, targetSessionId)
         break
     }
   }
 
   // Done
   if (data.stopReason) {
-    finishStreaming()
+    finishStreaming(targetSessionId)
   }
 
   // Error
   if (data.error) {
-    finishStreaming()
+    finishStreaming(targetSessionId)
     store.addErrorMessage(data.error)
   }
 }
 
-function handleToolUpdate(update: SessionUpdate) {
+function handleToolUpdate(update: SessionUpdate, targetSessionId?: string | null) {
   const toolId = update.toolCallId
   if (!toolId) return
 
@@ -219,14 +231,20 @@ function handleToolUpdate(update: SessionUpdate) {
     input,
     output,
     error,
-  })
+  }, targetSessionId || undefined)
 }
 
-function finishStreaming() {
-  store.finalizeStreamItems(currentAgent.value)
-  isStreaming.value = false
+function finishStreaming(targetSessionId?: string | null) {
+  // Finalize and commit stream items to the target session
+  // This ensures content is saved even if user switched to another session
+  store.finalizeStreamItems(currentAgent.value, targetSessionId || undefined)
+  store.commitStreamItems(targetSessionId || undefined)
   store.setSending(false)
-  pendingPermission.value = null
+  store.setSendingSessionId(null)
+  // Only clear permission if on same session
+  if (store.currentSessionId.value === targetSessionId) {
+    pendingPermission.value = null
+  }
   store.loadSessions()
 }
 
@@ -322,7 +340,7 @@ const visibleMessages = computed(() => {
       />
 
       <!-- Loading indicator -->
-      <div v-if="isStreaming && !pendingPermission" class="loading-indicator">
+      <div v-if="isCurrentSessionStreaming && !pendingPermission" class="loading-indicator">
         <div class="loading-dots">
           <span></span>
           <span></span>

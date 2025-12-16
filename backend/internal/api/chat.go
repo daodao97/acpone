@@ -104,13 +104,16 @@ func (s *Server) handleChat(w http.ResponseWriter, r *http.Request) {
 	currentText := ""
 	toolCallMap := make(map[string]int)
 
-	agentProc.OnNotification(func(msg *jsonrpc.Message) {
+	// Register handlers and get cleanup functions
+	cleanupNotification := agentProc.OnNotification(func(msg *jsonrpc.Message) {
 		s.handleNotification(msg, sendEvent, &streamItems, &currentText, toolCallMap, agentID)
 	})
+	defer cleanupNotification()
 
-	agentProc.OnPermission(func(req *agent.PermissionRequest) {
+	cleanupPermission := agentProc.OnPermission(func(req *agent.PermissionRequest) {
 		sendEvent("permission_request", req)
 	})
+	defer cleanupPermission()
 
 	sessionsMap := s.agentSessions[convID]
 	if sessionsMap == nil {
