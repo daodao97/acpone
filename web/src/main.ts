@@ -3,6 +3,10 @@ import './style.css'
 import 'markstream-vue/index.css'
 import App from './App.vue'
 import router from './router'
+import { useTheme } from './composables/useTheme'
+
+// Initialize theme on app startup
+useTheme()
 
 const app = createApp(App)
 app.use(router)

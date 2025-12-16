@@ -167,6 +167,10 @@ function getStatusClass(status: string) {
     default: return ''
   }
 }
+
+function isUrl(str: string) {
+  return str?.startsWith('http://') || str?.startsWith('https://')
+}
 </script>
 
 <template>
@@ -194,9 +198,12 @@ function getStatusClass(status: string) {
             </div>
             <div class="item-status">
               <span>{{ item.message }}</span>
-              <span v-if="item.install && item.status === 'missing'" class="install-hint">
-                {{ item.install }}
-              </span>
+              <template v-if="item.install && item.status === 'missing'">
+                <a v-if="isUrl(item.install)" :href="item.install" target="_blank" class="install-link">
+                  Download Node.js →
+                </a>
+                <span v-else class="install-hint">{{ item.install }}</span>
+              </template>
             </div>
           </div>
         </div>
@@ -219,9 +226,12 @@ function getStatusClass(status: string) {
             </div>
             <div class="item-status">
               <span>{{ item.message }}</span>
-              <span v-if="item.install && item.status === 'missing'" class="install-hint">
-                {{ item.install }}
-              </span>
+              <template v-if="item.install && item.status === 'missing'">
+                <a v-if="isUrl(item.install)" :href="item.install" target="_blank" class="install-link">
+                  Download →
+                </a>
+                <span v-else class="install-hint">{{ item.install }}</span>
+              </template>
             </div>
           </div>
         </div>
@@ -408,6 +418,20 @@ function getStatusClass(status: string) {
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+}
+
+.install-link {
+  font-size: 11px;
+  color: var(--accent-success);
+  text-decoration: none;
+  border: none;
+  font-weight: 500;
+  transition: opacity var(--duration-fast);
+}
+
+.install-link:hover {
+  opacity: 0.8;
+  border: none;
 }
 
 .error-message {

@@ -35,8 +35,9 @@ type SetupStatus struct {
 
 // Install instructions for common tools
 var installInstructions = map[string]string{
-	"npm":    "Install Node.js from https://nodejs.org/",
-	"npx":    "Install Node.js from https://nodejs.org/",
+	"npm":    "https://nodejs.org/en/download",
+	"npx":    "https://nodejs.org/en/download",
+	"node":   "https://nodejs.org/en/download",
 	"claude": "npm install -g @anthropic-ai/claude-code",
 	"codex":  "npm install -g @openai/codex",
 }

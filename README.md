@@ -12,6 +12,12 @@
 - 深色/浅色主题
 - 中英文切换
 
+## 预览
+
+![](docs/pre_install.png)
+
+![](docs/chat_preview.png)
+
 ## 架构图
 
 ```
