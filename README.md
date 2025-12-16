@@ -16,6 +16,10 @@
 
 ![前置依赖安装](docs/setup.png)
 
+配置你的 AI 供应商, 后即可使用
+
+![渠道配置](docs/config.png)
+
 ![聊天页面预览](docs/chat.png)
 
 ## 架构图
