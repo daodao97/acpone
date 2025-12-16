@@ -14,9 +14,9 @@
 
 ## 预览
 
-![](docs/pre_install.png)
+![前置依赖安装](docs/setup.png)
 
-![](docs/chat_preview.png)
+![聊天页面预览](docs/chat.png)
 
 ## 架构图
 
