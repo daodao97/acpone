@@ -37,6 +37,7 @@ const messages: Record<Lang, Record<string, string>> = {
 
         // Input
         'input.placeholder': 'Message... (Type @ to mention, / for commands)',
+        'input.dropFiles': 'Drop files here to upload',
 
         // Sidebar
         'sidebar.new_chat': 'New Chat',
@@ -72,6 +73,7 @@ const messages: Record<Lang, Record<string, string>> = {
 
         // Input
         'input.placeholder': '输入消息... (输入 @ 呼叫智能体, / 使用命令)',
+        'input.dropFiles': '拖放文件到此处上传',
 
         // Sidebar
         'sidebar.new_chat': '新对话',

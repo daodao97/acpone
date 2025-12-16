@@ -5,3 +5,4 @@ backend/cmd/acpone/web
 backend/acpone.config.json
 acpone
 .DS_Store
+.acpone-uploads/

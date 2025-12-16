@@ -50,9 +50,8 @@ function closeModal() {
         :class="{ active: session.id === currentSessionId }"
         @click="store.selectSession(session.id)"
       >
-        <div class="session-title">{{ session.title }}</div>
-        <div class="session-meta">
-          <span class="session-agent">{{ session.activeAgent }}</span>
+        <div class="session-row">
+          <span class="session-title">{{ session.title }}</span>
           <span class="session-time">{{ formatTime(session.updatedAt) }}</span>
         </div>
         <button
@@ -174,14 +173,20 @@ function closeModal() {
   border-radius: 0 2px 2px 0;
 }
 
+.session-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
 .session-title {
+  flex: 1;
   font-size: 13px;
   font-weight: 500;
   color: var(--text-secondary);
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
-  margin-bottom: 2px;
   transition: color var(--duration-fast);
 }
 
@@ -190,22 +195,10 @@ function closeModal() {
   color: var(--text-primary);
 }
 
-.session-meta {
-  display: flex;
-  align-items: center;
-  gap: 8px;
+.session-time {
   font-size: 10px;
   color: var(--text-tertiary);
-}
-
-.session-agent {
-  font-family: var(--font-mono);
-  font-size: 9px;
-  opacity: 0.7;
-}
-
-.session-time {
-  margin-left: auto;
+  flex-shrink: 0;
 }
 
 .session-delete {

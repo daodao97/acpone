@@ -5,6 +5,8 @@ import (
 	"fmt"
 	"log"
 	"net/http"
+	"path/filepath"
+	"strings"
 
 	"github.com/daodao97/acpone/internal/agent"
 	"github.com/daodao97/acpone/internal/conversation"
@@ -12,9 +14,10 @@ import (
 )
 
 type chatRequest struct {
-	Message        string `json:"message"`
-	ConversationID string `json:"conversationId"`
-	WorkspaceID    string `json:"workspaceId"`
+	Message        string   `json:"message"`
+	ConversationID string   `json:"conversationId"`
+	WorkspaceID    string   `json:"workspaceId"`
+	Files          []string `json:"files"` // Uploaded file paths
 }
 
 type streamItem struct {
@@ -121,10 +124,16 @@ func (s *Server) handleChat(w http.ResponseWriter, r *http.Request) {
 
 	// Build prompt with context if agent changed
 	promptText := req.Message
+
+	// Add file references to prompt
+	if len(req.Files) > 0 {
+		promptText = formatFileReferences(req.Files) + " " + promptText
+	}
+
 	if agentChanged {
 		context := s.conversations.GetContextSummary(convID, 10)
 		if context != "" {
-			promptText = context + "User: " + req.Message
+			promptText = context + "User: " + promptText
 			sendEvent("status", map[string]string{"message": fmt.Sprintf("Switching to %s with context...", agentID)})
 		}
 	}
@@ -245,4 +254,19 @@ func (s *Server) createAgentSession(agentID, cwd string) (string, error) {
 	}
 
 	return sessionID, nil
+}
+
+// formatFileReferences formats file paths as @filename references for the prompt
+func formatFileReferences(files []string) string {
+	if len(files) == 0 {
+		return ""
+	}
+
+	refs := make([]string, 0, len(files))
+	for _, path := range files {
+		// Extract filename from full path
+		filename := filepath.Base(path)
+		refs = append(refs, "@"+filename)
+	}
+	return strings.Join(refs, " ")
 }

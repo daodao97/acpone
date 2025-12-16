@@ -39,7 +39,7 @@ watch(messages, () => scrollToBottom(), { deep: true })
 watch(streamItems, () => scrollToBottom(), { deep: true })
 watch(pendingPermission, () => scrollToBottom())
 
-async function handleSend(message: string) {
+async function handleSend(message: string, files: string[] = []) {
   store.setSending(true)
   store.commitStreamItems() // Move previous stream items to messages
   store.clearStreamItems()
@@ -57,6 +57,7 @@ async function handleSend(message: string) {
     message,
     store.currentSessionId.value,
     currentWorkspace.value || null,
+    files,
     (event: unknown) => {
       const data = event as StreamEvent & { permission_request?: PermissionRequest }
       handleStreamEvent(data)
@@ -119,6 +120,10 @@ function handleStreamEvent(
     store.setConversationId(data.conversationId)
     if (data.agent) {
       store.setAgent(data.agent)
+    }
+    // Capture agent sessionId for cancel functionality
+    if (data.sessionId) {
+      store.setAgentSessionId(data.sessionId)
     }
   }
 
@@ -228,6 +233,11 @@ function handlePermissionConfirmed() {
   pendingPermission.value = null
 }
 
+async function handleCancel() {
+  await store.cancelCurrentChat()
+  finishStreaming()
+}
+
 const visibleMessages = computed(() => {
   // Fix: messages is a Ref, so we must access .value
   const msgs = messages.value || []
@@ -320,7 +330,7 @@ const visibleMessages = computed(() => {
       </div>
     </div>
 
-    <ChatInput :disabled="isSending || !currentWorkspace" :agents="agents" :commands="commands" :current-agent="currentAgent" @send="handleSend" />
+    <ChatInput :disabled="isSending || !currentWorkspace" :is-sending="isSending" :agents="agents" :commands="commands" :current-agent="currentAgent" :current-workspace="currentWorkspace" @send="handleSend" @cancel="handleCancel" />
   </div>
 </template>
 

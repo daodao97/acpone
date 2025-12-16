@@ -89,11 +89,15 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc("/api/agents", s.handleAgents)
 	mux.HandleFunc("/api/agents/update", s.handleAgentUpdate)
 	mux.HandleFunc("/api/workspaces", s.handleWorkspaces)
+	mux.HandleFunc("/api/workspaces/files", s.handleWorkspaceFiles)
 	mux.HandleFunc("/api/sessions", s.handleSessions)
 	mux.HandleFunc("/api/sessions/new", s.handleSessionNew)
 	mux.HandleFunc("/api/sessions/", s.handleSessionByID)
 	mux.HandleFunc("/api/chat", s.handleChat)
+	mux.HandleFunc("/api/chat/cancel", s.handleChatCancel)
 	mux.HandleFunc("/api/permission/confirm", s.handlePermissionConfirm)
+	mux.HandleFunc("/api/upload", s.handleFileUpload)
+	mux.HandleFunc("/api/upload/cleanup", s.handleFileCleanup)
 
 	// Static files
 	if s.staticFS != nil {

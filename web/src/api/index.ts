@@ -25,6 +25,23 @@ export async function fetchWorkspaces(): Promise<{ workspaces: Workspace[]; defa
   return { workspaces: data.workspaces || [], default: data.default }
 }
 
+export interface FileInfo {
+  path: string
+  name: string
+  isDir: boolean
+}
+
+export async function fetchWorkspaceFiles(
+  workspaceId: string,
+  query: string = '',
+  limit: number = 50
+): Promise<FileInfo[]> {
+  const params = new URLSearchParams({ workspaceId, q: query, limit: String(limit) })
+  const res = await fetch(`${API_BASE}/workspaces/files?${params}`)
+  const data = await res.json()
+  return data.files || []
+}
+
 export async function createWorkspace(
   name: string,
   path: string
@@ -112,10 +129,67 @@ export async function updateAgentEnv(
   return { success: true }
 }
 
+export async function cancelChat(
+  agentId: string,
+  sessionId: string
+): Promise<{ success: boolean; error?: string }> {
+  const res = await fetch(`${API_BASE}/chat/cancel`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ agentId, sessionId }),
+  })
+  const data = await res.json()
+  if (!res.ok) {
+    return { success: false, error: data.error || 'Failed to cancel' }
+  }
+  return { success: true }
+}
+
+export interface UploadedFile {
+  name: string
+  path: string
+  size: number
+}
+
+export async function uploadFiles(
+  files: File[],
+  workspaceId: string
+): Promise<{ success: boolean; files?: UploadedFile[]; error?: string }> {
+  const formData = new FormData()
+  formData.append('workspaceId', workspaceId)
+  files.forEach((file) => formData.append('files', file))
+
+  const res = await fetch(`${API_BASE}/upload`, {
+    method: 'POST',
+    body: formData,
+  })
+  const data = await res.json()
+  if (!res.ok) {
+    return { success: false, error: data.error || 'Failed to upload' }
+  }
+  return { success: true, files: data.files }
+}
+
+export async function cleanupFiles(
+  workspaceId: string
+): Promise<{ success: boolean; error?: string }> {
+  const res = await fetch(`${API_BASE}/upload/cleanup`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ workspaceId }),
+  })
+  const data = await res.json()
+  if (!res.ok) {
+    return { success: false, error: data.error || 'Failed to cleanup' }
+  }
+  return { success: true }
+}
+
 export function sendMessage(
   message: string,
   conversationId: string | null,
   workspaceId: string | null,
+  files: string[],
   onEvent: (event: unknown) => void
 ): AbortController {
   const controller = new AbortController()
@@ -123,7 +197,7 @@ export function sendMessage(
   fetch(`${API_BASE}/chat`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ message, conversationId, workspaceId }),
+    body: JSON.stringify({ message, conversationId, workspaceId, files }),
     signal: controller.signal,
   })
     .then(async (response) => {

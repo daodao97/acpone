@@ -22,6 +22,7 @@ const currentAgent = ref<string>('claude')
 const currentWorkspace = ref<string>('')
 const isLoading = ref(false)
 const isSending = ref(false)
+const agentSessionId = ref<string | null>(null)
 
 // Stream items for current response (tool calls interleaved with messages)
 const streamItems = ref<StreamItem[]>([])
@@ -109,6 +110,10 @@ async function selectSession(id: string) {
       currentSession.value = session
       currentAgent.value = session.activeAgent
       streamItems.value = []
+      // Auto-select workspace based on session's workspace
+      if (session.workspaceId && session.workspaceId !== currentWorkspace.value) {
+        currentWorkspace.value = session.workspaceId
+      }
     }
   } finally {
     isLoading.value = false
@@ -256,6 +261,19 @@ function setSending(value: boolean) {
   isSending.value = value
 }
 
+function setAgentSessionId(id: string | null) {
+  agentSessionId.value = id
+}
+
+async function cancelCurrentChat() {
+  if (!agentSessionId.value || !currentAgent.value) return false
+  const result = await api.cancelChat(currentAgent.value, agentSessionId.value)
+  if (result.success) {
+    isSending.value = false
+  }
+  return result.success
+}
+
 function setCommands(agentId: string, newCommands: SlashCommand[]) {
   commandsByAgent.value[agentId] = newCommands
 }
@@ -305,5 +323,8 @@ export function useSessionStore() {
     setWorkspace,
     setSending,
     setCommands,
+    agentSessionId,
+    setAgentSessionId,
+    cancelCurrentChat,
   }
 }

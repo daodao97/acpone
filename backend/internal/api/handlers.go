@@ -229,6 +229,39 @@ func (s *Server) handlePermissionConfirm(w http.ResponseWriter, r *http.Request)
 	writeJSON(w, map[string]any{"success": true})
 }
 
+func (s *Server) handleChatCancel(w http.ResponseWriter, r *http.Request) {
+	if r.Method != "POST" {
+		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+
+	var data struct {
+		AgentID   string `json:"agentId"`
+		SessionID string `json:"sessionId"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&data); err != nil {
+		writeError(w, "Invalid request", http.StatusBadRequest)
+		return
+	}
+
+	agent, err := s.agents.Get(data.AgentID)
+	if err != nil {
+		writeError(w, "Agent not found", http.StatusNotFound)
+		return
+	}
+
+	// Send session/cancel notification to agent
+	err = agent.Notify("session/cancel", map[string]string{
+		"sessionId": data.SessionID,
+	})
+	if err != nil {
+		writeError(w, "Failed to cancel: "+err.Error(), http.StatusInternalServerError)
+		return
+	}
+
+	writeJSON(w, map[string]any{"success": true})
+}
+
 func (s *Server) resolveWorkspacePath(workspaceID string) string {
 	if workspaceID != "" {
 		if ws := s.config.FindWorkspace(workspaceID); ws != nil {
