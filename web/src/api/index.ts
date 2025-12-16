@@ -185,11 +185,17 @@ export async function cleanupFiles(
   return { success: true }
 }
 
+export interface ChatFile {
+  name: string
+  path: string
+  size: number
+}
+
 export function sendMessage(
   message: string,
   conversationId: string | null,
   workspaceId: string | null,
-  files: string[],
+  files: ChatFile[],
   onEvent: (event: unknown) => void
 ): AbortController {
   const controller = new AbortController()

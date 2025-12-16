@@ -13,11 +13,17 @@ import (
 	"github.com/daodao97/acpone/internal/jsonrpc"
 )
 
+type chatFileInfo struct {
+	Name string `json:"name"`
+	Path string `json:"path"`
+	Size int64  `json:"size"`
+}
+
 type chatRequest struct {
-	Message        string   `json:"message"`
-	ConversationID string   `json:"conversationId"`
-	WorkspaceID    string   `json:"workspaceId"`
-	Files          []string `json:"files"` // Uploaded file paths
+	Message        string         `json:"message"`
+	ConversationID string         `json:"conversationId"`
+	WorkspaceID    string         `json:"workspaceId"`
+	Files          []chatFileInfo `json:"files"` // Uploaded files with info
 }
 
 type streamItem struct {
@@ -87,7 +93,11 @@ func (s *Server) handleChat(w http.ResponseWriter, r *http.Request) {
 	// Get or create agent session
 	// Get agent process and set up handlers early (before session/new)
 	// This ensures we capture available_commands_update sent after session/new
-	agentProc, _ := s.agents.Get(agentID)
+	agentProc, err := s.agents.Get(agentID)
+	if err != nil {
+		sendEvent("error", map[string]string{"message": "Failed to get agent: " + err.Error()})
+		return
+	}
 	agentProc.SetWorkingDir(s.resolveWorkspacePath(req.WorkspaceID))
 
 	streamItems := make([]streamItem, 0)
@@ -138,7 +148,16 @@ func (s *Server) handleChat(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
-	s.conversations.AddUserMessage(convID, req.Message)
+	// Convert file info for persistence
+	var messageFiles []conversation.MessageFile
+	for _, f := range req.Files {
+		messageFiles = append(messageFiles, conversation.MessageFile{
+			Name: f.Name,
+			Path: f.Path,
+			Size: f.Size,
+		})
+	}
+	s.conversations.AddUserMessage(convID, req.Message, messageFiles)
 
 	sendEvent("session", map[string]any{
 		"conversationId": convID,
@@ -256,16 +275,19 @@ func (s *Server) createAgentSession(agentID, cwd string) (string, error) {
 	return sessionID, nil
 }
 
-// formatFileReferences formats file paths as @filename references for the prompt
-func formatFileReferences(files []string) string {
+// formatFileReferences formats file info as @filename references for the prompt
+func formatFileReferences(files []chatFileInfo) string {
 	if len(files) == 0 {
 		return ""
 	}
 
 	refs := make([]string, 0, len(files))
-	for _, path := range files {
-		// Extract filename from full path
-		filename := filepath.Base(path)
+	for _, f := range files {
+		// Use the name directly, or extract from path if name is empty
+		filename := f.Name
+		if filename == "" {
+			filename = filepath.Base(f.Path)
+		}
 		refs = append(refs, "@"+filename)
 	}
 	return strings.Join(refs, " ")

@@ -24,6 +24,12 @@ export interface SessionMeta {
   updatedAt: number
 }
 
+export interface MessageFile {
+  name: string
+  path: string
+  size: number
+}
+
 export interface Message {
   role: 'user' | 'assistant'
   content: string
@@ -31,6 +37,7 @@ export interface Message {
   toolCall?: ToolCall
   timestamp?: number
   isError?: boolean
+  files?: MessageFile[]
 }
 
 export interface Session {

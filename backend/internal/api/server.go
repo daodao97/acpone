@@ -4,6 +4,7 @@ import (
 	"embed"
 	"io"
 	"io/fs"
+	"log"
 	"net/http"
 	"strings"
 	"sync"
@@ -137,7 +138,7 @@ func (s *Server) Handler() http.Handler {
 		})
 	}
 
-	return corsMiddleware(mux)
+	return recoveryMiddleware(corsMiddleware(mux))
 }
 
 // Shutdown stops all agents
@@ -156,6 +157,18 @@ func corsMiddleware(next http.Handler) http.Handler {
 			return
 		}
 
+		next.ServeHTTP(w, r)
+	})
+}
+
+func recoveryMiddleware(next http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		defer func() {
+			if err := recover(); err != nil {
+				log.Printf("PANIC recovered: %v\nPath: %s", err, r.URL.Path)
+				http.Error(w, "Internal server error", http.StatusInternalServerError)
+			}
+		}()
 		next.ServeHTTP(w, r)
 	})
 }

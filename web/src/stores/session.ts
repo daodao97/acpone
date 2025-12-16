@@ -7,6 +7,7 @@ import type {
   StreamItem,
   Workspace,
   SlashCommand,
+  MessageFile,
 } from '../types'
 import * as api from '../api'
 
@@ -149,9 +150,13 @@ async function removeSession(id: string) {
   await loadSessions()
 }
 
-function addUserMessage(content: string) {
+function addUserMessage(content: string, files?: MessageFile[]) {
   if (!currentSession.value) return
-  currentSession.value.messages.push({ role: 'user', content })
+  currentSession.value.messages.push({
+    role: 'user',
+    content,
+    files: files && files.length > 0 ? files : undefined,
+  })
 }
 
 function addAssistantMessage(content: string, agent: string) {

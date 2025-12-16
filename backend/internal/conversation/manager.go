@@ -20,12 +20,20 @@ type ToolCallInfo struct {
 	Error       string `json:"error,omitempty"`
 }
 
+// MessageFile represents a file attached to a message
+type MessageFile struct {
+	Name string `json:"name"`
+	Path string `json:"path"`
+	Size int64  `json:"size"`
+}
+
 // Message in conversation history
 type Message struct {
 	Role      string        `json:"role"` // user, assistant
 	Content   string        `json:"content"`
 	Agent     string        `json:"agent,omitempty"`
 	ToolCall  *ToolCallInfo `json:"toolCall,omitempty"`
+	Files     []MessageFile `json:"files,omitempty"`
 	Timestamp int64         `json:"timestamp"`
 }
 
@@ -92,14 +100,15 @@ func (m *Manager) SetWorkspace(id, workspaceID string) {
 	}
 }
 
-// AddUserMessage adds a user message
-func (m *Manager) AddUserMessage(id, content string) {
+// AddUserMessage adds a user message with optional files
+func (m *Manager) AddUserMessage(id, content string, files []MessageFile) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 	if conv, ok := m.conversations[id]; ok {
 		conv.Messages = append(conv.Messages, Message{
 			Role:      "user",
 			Content:   content,
+			Files:     files,
 			Timestamp: time.Now().UnixMilli(),
 		})
 	}

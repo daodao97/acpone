@@ -1,11 +1,11 @@
 <script setup lang="ts">
 import { ref, computed, onMounted, onUnmounted, watch } from 'vue'
-import type { Agent, SlashCommand } from '../types'
+import type { Agent, SlashCommand, MessageFile } from '../types'
 import { useI18n } from '../composables/useI18n'
 import { fetchWorkspaceFiles, uploadFiles, type FileInfo, type UploadedFile } from '../api'
 
 const emit = defineEmits<{
-  send: [message: string, files: string[]]
+  send: [message: string, files: MessageFile[]]
   cancel: []
 }>()
 
@@ -117,8 +117,13 @@ const filteredCommands = computed(() => {
 function handleSubmit() {
   const text = message.value.trim()
   if (!text && uploadedFiles.value.length === 0) return
-  const filePaths = uploadedFiles.value.map(f => f.path)
-  emit('send', text, filePaths)
+  // Convert to MessageFile format for storage, keep full info
+  const files: MessageFile[] = uploadedFiles.value.map(f => ({
+    name: f.name,
+    path: f.path,
+    size: f.size
+  }))
+  emit('send', text, files)
   message.value = ''
   uploadedFiles.value = []
   showMentions.value = false

@@ -81,7 +81,7 @@ func (s *Server) restoreConversation(session *storage.StoredSession) {
 	s.conversations.Create(session.ID, session.ActiveAgent, session.WorkspaceID)
 	for _, msg := range session.Messages {
 		if msg.Role == "user" {
-			s.conversations.AddUserMessage(session.ID, msg.Content)
+			s.conversations.AddUserMessage(session.ID, msg.Content, msg.Files)
 		} else {
 			s.conversations.AddAssistantMessage(session.ID, msg.Content, msg.Agent)
 		}

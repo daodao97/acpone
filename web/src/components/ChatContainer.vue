@@ -3,7 +3,7 @@ import { ref, watch, nextTick, computed } from 'vue'
 import MarkdownRender from 'markstream-vue'
 import { useSessionStore } from '../stores/session'
 import { sendMessage } from '../api'
-import type { StreamEvent, SessionUpdate, PermissionRequest, SlashCommand } from '../types'
+import type { StreamEvent, SessionUpdate, PermissionRequest, SlashCommand, MessageFile } from '../types'
 import ChatMessage from './ChatMessage.vue'
 import ToolCallItem from './ToolCallItem.vue'
 import ChatInput from './ChatInput.vue'
@@ -39,7 +39,7 @@ watch(messages, () => scrollToBottom(), { deep: true })
 watch(streamItems, () => scrollToBottom(), { deep: true })
 watch(pendingPermission, () => scrollToBottom())
 
-async function handleSend(message: string, files: string[] = []) {
+async function handleSend(message: string, files: MessageFile[] = []) {
   store.setSending(true)
   store.commitStreamItems() // Move previous stream items to messages
   store.clearStreamItems()
@@ -51,7 +51,8 @@ async function handleSend(message: string, files: string[] = []) {
     await store.createNewSession()
   }
 
-  store.addUserMessage(message)
+  // Store message with file info
+  store.addUserMessage(message, files.length > 0 ? files : undefined)
 
   sendMessage(
     message,

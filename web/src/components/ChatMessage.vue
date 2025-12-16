@@ -7,6 +7,14 @@ defineProps<{
   message: Message
   hideAgentTag?: boolean
 }>()
+
+function formatFileSize(bytes: number): string {
+  if (bytes === 0) return '0 B'
+  const k = 1024
+  const sizes = ['B', 'KB', 'MB', 'GB']
+  const i = Math.floor(Math.log(bytes) / Math.log(k))
+  return parseFloat((bytes / Math.pow(k, i)).toFixed(1)) + ' ' + sizes[i]
+}
 </script>
 
 <template>
@@ -25,6 +33,17 @@ defineProps<{
       :class="message.agent">
       {{ message.agent }}
     </span>
+    <!-- File attachments for user messages -->
+    <div v-if="message.role === 'user' && message.files && message.files.length > 0" class="message-files">
+      <div v-for="file in message.files" :key="file.path" class="message-file">
+        <svg class="file-icon" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+          <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path>
+          <polyline points="14 2 14 8 20 8"></polyline>
+        </svg>
+        <span class="file-name">{{ file.name }}</span>
+        <span class="file-size">{{ formatFileSize(file.size) }}</span>
+      </div>
+    </div>
     <div class="content">
       <MarkdownRender :content="message.content" />
     </div>
@@ -120,4 +139,41 @@ defineProps<{
   margin-bottom: 0 !important;
 }
 
+/* File attachments in user messages */
+.message-files {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-bottom: 8px;
+}
+
+.message-file {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 8px;
+  background: var(--bg-surface);
+  border-radius: var(--radius-sm);
+  font-size: 12px;
+  border: 1px solid var(--accent-subtle);
+}
+
+.file-icon {
+  color: var(--text-secondary);
+  flex-shrink: 0;
+}
+
+.file-name {
+  color: var(--text-primary);
+  max-width: 150px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.file-size {
+  color: var(--text-tertiary);
+  font-size: 11px;
+  flex-shrink: 0;
+}
 </style>
